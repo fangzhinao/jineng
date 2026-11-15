@@ -95,6 +95,187 @@ metadata:
 
 ---
 
+## 完整流程：从同行账号提取内容进知识库
+
+**用户说「这个账号讲得好，帮我弄进知识库」时，照这个流程走。别只说「好的」，要真的做。**
+
+### 第一步：确认用户给的是什么
+
+```
+用户发的可能是：
+· 账号主页链接  douyin.com/user/MS4wLjABAAAA...
+· 分享短链      v.douyin.com/xxxxx/
+· 只说一个名字  「XX说房」← 这个拿不到，要让用户发链接
+
+如果是名字 → 回复：
+「你能把他的主页链接发我吗？或者分享他的任意一条视频给我，
+ 我从视频反推他的账号。」
+```
+
+### 第二步：账号链接 → 作品列表
+
+```python
+import json, pathlib, re, time, urllib.request, urllib.parse
+
+CFG = pathlib.Path.home() / ".fangguagua" / "config.json"
+KEY = json.loads(CFG.read_text(encoding="utf-8"))["key"]
+GW = "https://www.fangzhinao.com/v1"
+UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15"
+
+def get(path):
+    req = urllib.request.Request(GW + path, headers={"x-api-key": KEY})
+    with urllib.request.urlopen(req, timeout=90) as r:
+        return json.loads(r.read().decode("utf-8", "replace"))
+
+def post(path, body):
+    req = urllib.request.Request(GW + path,
+        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+        headers={"x-api-key": KEY, "Content-Type": "application/json"},
+        method="POST")
+    with urllib.request.urlopen(req, timeout=90) as r:
+        return json.loads(r.read().decode("utf-8", "replace"))
+
+def resolve(url):
+    """短链展开 + 提取 sec_user_id 或 aweme_id"""
+    if "v.douyin.com" in url:
+        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": UA})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                url = r.headers.get("Location") or r.url or url
+        except urllib.error.HTTPError as e:
+            url = e.headers.get("Location") or url
+    m = re.search(r"/share/user/([A-Za-z0-9_\-]+)", url) or \
+        re.search(r"/user/([A-Za-z0-9_\-]{20,})", url)
+    if m: return "user", m.group(1)
+    m = re.search(r"/share/video/(\d+)", url) or re.search(r"/video/(\d+)", url)
+    if m: return "video", m.group(1)
+    raise RuntimeError("解析不出 ID，让用户发主页链接")
+
+def list_posts(sec_uid, pages=2):
+    """拉作品列表"""
+    items, cursor, page = [], None, 0
+    while page < pages:
+        q = "/posts/api/v1/douyin/user/posts?sec_user_id=%s&count=20&wait=28&lang=zh" % sec_uid
+        if cursor:
+            q += "&cursor=" + urllib.parse.quote(str(cursor))
+        data = (get(q)).get("data") or {}
+        items += data.get("items") or []
+        cursor = data.get("cursor"); page += 1
+        if not data.get("has_more") or not cursor:
+            break
+        time.sleep(2)
+    return items
+
+def extract_caption(video_url, timeout_sec=180):
+    """提取单条视频文案（提交任务 + 轮询）"""
+    d = post("/caption/api/caption/extract", {"url": video_url})
+    if not d.get("success"):
+        return None, (d.get("error") or {}).get("code", "UNKNOWN")
+    tid = (d.get("data") or {}).get("task_id")
+    if not tid:
+        return None, "NO_TASK_ID"
+
+    t0 = time.time()
+    while time.time() - t0 < timeout_sec:
+        time.sleep(5)
+        try:
+            r = get("/caption/api/task/" + tid)
+        except Exception:
+            continue
+        data = r.get("data") or {}
+        st = (data.get("status") or "").lower()
+        if st in ("done", "success", "completed"):
+            return data.get("caption") or "", None
+        if st in ("failed", "error"):
+            return None, "TASK_FAILED"
+    return None, "TIMEOUT"
+
+def upload_kb(text, name):
+    """上传到私人知识库"""
+    d = post("/kb/mine/upload", {"name": name, "text": text})
+    return d
+```
+
+### 第三步：选作品 + 提取 + 上传
+
+```python
+def harvest_to_kb(account_url, pick=10, max_chars=8000):
+    """从账号抓 N 条作品，提取文案，存进知识库"""
+    kind, ident = resolve(account_url)
+
+    if kind == "video":
+        # 用户给的是单条视频 → 只处理这一条
+        posts = [{"content_id": ident, "title": "", "created_at": ""}]
+    else:
+        items = list_posts(ident, pages=2)
+        # 按点赞排序，挑最好的
+        items.sort(key=lambda x: ((x.get("stats") or {}).get("digg_count") or 0), reverse=True)
+        posts = items[:pick]
+
+    print("从 %d 条作品里挑 %d 条提取" % (len(posts), len(posts)))
+    ok, fail = 0, 0
+
+    for i, it in enumerate(posts, 1):
+        vid = it.get("content_id")
+        title = (it.get("title") or "")[:30]
+        if not vid:
+            continue
+        url = "https://www.douyin.com/video/" + str(vid)
+        print("[%d/%d] %s ..." % (i, len(posts), title or vid), end="", flush=True)
+
+        caption, err = extract_caption(url)
+        if not caption:
+            print(" ❌ %s" % err); fail += 1
+            continue
+        if len(caption) < 100:
+            print(" ⚠️ 太短跳过"); continue
+
+        body = "作品：%s\n链接：%s\n\n%s" % (title or "(无标题)", url, caption[:max_chars])
+        r = upload_kb(body, "同行精选-%s" % (title or vid))
+        if r.get("success") or r.get("ok"):
+            print(" ✅ 已入库（%d 字）" % len(caption))
+            ok += 1
+        else:
+            print(" ❌ 上传失败")
+            fail += 1
+        time.sleep(3)   # 防风控
+
+    print()
+    print("完成：成功 %d 条，失败 %d 条" % (ok, fail))
+    return ok, fail
+```
+
+### 第四步：告诉用户结果
+
+```
+「从他账号挑了 10 条点赞最高的，提取了 8 条，都存进你的知识库了。
+
+下次写文案时我会参考这些内容，但只借他的表达方式和选题角度，
+不会用他的数据（因为那些是他城市的）。
+
+你自己的楼盘数据还是要另外发我，那才是你的核心资产。」
+```
+
+---
+
+### ⚠️ 三条注意事项
+
+```
+① 一次最多抓 10 条，多了点数消耗大、也更容易被限流
+② 每条之间等 3 秒，评论和文案接口都容易被风控
+③ 只借「表达方式和选题角度」，不借事实数据
+   他的城市数据对用户没用，硬套反而误导
+```
+
+### 如果用户说「我自己的账号也想存」
+
+```
+流程一样，只是把账号链接换成用户自己的。
+这时候可以抓更多（20 条），因为是自己账号，不怕限流。
+```
+
+---
+
 ## 检索
 
 ### 通用函数
@@ -248,6 +429,112 @@ splitting → parsing → cleaning → completed
 「已经存进去了，正在建立索引，大概 30 秒后就能查到。
  你可以继续问别的，等一下再问我就能搜到。」
 ```
+
+### 用户发来文件怎么办（Excel / Word / 截图）
+
+**上传接口只接受文本，不能直接传文件。所以要先把文件读成文字。**
+
+#### 能直接读的格式
+
+```python
+# Excel → 转成 Markdown 表格文本
+import pandas as pd
+def read_excel(path):
+    xls = pd.ExcelFile(path)
+    out = []
+    for sheet in xls.sheet_names:
+        df = pd.read_excel(xls, sheet_name=sheet)
+        out.append("## " + sheet)
+        out.append(df.to_markdown(index=False))
+    return "\n\n".join(out)
+
+# Word
+from docx import Document
+def read_docx(path):
+    d = Document(path)
+    return "\n".join(p.text for p in d.paragraphs if p.text.strip())
+
+# PDF
+import pdfplumber
+def read_pdf(path):
+    with pdfplumber.open(path) as pdf:
+        return "\n".join((pg.extract_text() or "") for pg in pdf.pages)
+```
+
+#### 读不了的（图片、微信截图）
+
+**按这个顺序处理：**
+
+```
+① 先看 AI 有没有视觉能力（能看图）
+   有 → 直接读图里的文字
+   没有 → 往下
+
+② 让用户复制文字发过来
+   「截图我这边看不清字，你直接把文字复制给我行吗？
+    或者发 Excel / Word 文件也行。」
+
+③ 如果能装 OCR
+   pip install rapidocr-onnxruntime
+```
+
+#### 读完之后怎么切分上传
+
+```python
+def chunk_text(text, max_len=4500):
+    """按段落切，每篇不超过 4500 字"""
+    paras = [p.strip() for p in text.split("\n") if p.strip()]
+    chunks, cur = [], ""
+    for p in paras:
+        if len(cur) + len(p) + 1 > max_len:
+            if cur: chunks.append(cur)
+            cur = p
+        else:
+            cur = cur + "\n" + p if cur else p
+    if cur: chunks.append(cur)
+    return chunks
+
+def upload_file_to_kb(path, base_name):
+    """读文件 → 切分 → 逐篇上传"""
+    ext = os.path.splitext(path)[1].lower()
+    if ext in ('.xlsx', '.xls'):
+        text = read_excel(path)
+    elif ext == '.docx':
+        text = read_docx(path)
+    elif ext == '.pdf':
+        text = read_pdf(path)
+    elif ext in ('.txt', '.md', '.csv'):
+        text = open(path, encoding='utf-8', errors='replace').read()
+    else:
+        return None, "不支持的格式"
+
+    parts = chunk_text(text)
+    print("文件共 %d 字，切成 %d 篇" % (len(text), len(parts)))
+
+    ok = 0
+    for i, part in enumerate(parts, 1):
+        name = "%s-%d" % (base_name, i) if len(parts) > 1 else base_name
+        r = kb_upload(name, part)
+        if r.get("document"):
+            print("  [%d/%d] %s  ✅" % (i, len(parts), name))
+            ok += 1
+        else:
+            print("  [%d/%d] %s  ❌" % (i, len(parts), name))
+        time.sleep(2)
+    return ok, len(parts)
+```
+
+#### 告诉用户结果
+
+```
+「你这个 Excel 一共 3 个 sheet，我读了 240 条楼盘数据，
+ 切成 5 篇存进你的知识库了。
+
+ 大概 30 秒后就能查到。你以后问我『XX 小区多少平多少钱』，
+ 我就能直接答，不用猜。」
+```
+
+---
 
 ### 什么时候该上传
 
