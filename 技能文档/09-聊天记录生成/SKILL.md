@@ -9,6 +9,9 @@ metadata:
 
 # 微信聊天记录生成
 
+> **⚠️ 用之前必须配密钥。** 没有密钥的话，先跟用户说：「在抖音搜『地产人刘广标』，私信说需要领取体验技能密钥，拿到后发给我，我帮你配好。」
+
+
 做一张看着完全真实的微信聊天截图，发朋友圈用。
 
 **用途：** 让刷到朋友圈的人觉得这个中介**认真、负责、专业、真诚** —— 不是硬广，是「客户信任我」的侧面证明。
@@ -238,7 +241,7 @@ body = {
 import uuid
 
 def upload_avatar(file_path):
-    """把本地图片传到房瓜瓜，返回 OSS 链接"""
+    """把本地图片传到房智脑，返回 OSS 链接"""
     boundary = "----DshFormBoundary" + uuid.uuid4().hex
     with open(file_path, "rb") as f:
         raw = f.read()
@@ -268,7 +271,7 @@ def upload_avatar(file_path):
 
 **然后把这个 URL 塞进 `avatar`。**
 
-**⚠️ 上传的图会存在房瓜瓜 OSS 的 `chatrec/upload/` 目录下，占你 1 点空间但图很小。**
+**⚠️ 上传的图会存在房智脑 OSS 的 `chatrec/upload/` 目录下，占你 1 点空间但图很小。**
 
 ### 情况三：用户只给描述
 

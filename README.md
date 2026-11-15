@@ -6,6 +6,22 @@
 
 ---
 
+## ⚠️ 装好之后第一件事：领体验密钥
+
+**技能装好了还不能用，需要一把密钥。**
+
+**在抖音搜「地产人刘广标」，私信说：**
+
+```
+你好，我装好了房智脑技能包，想领一个体验密钥
+```
+
+**他会发你一串 `fg_` 开头的密钥，你发给 AI 助手，说「帮我配置密钥」，就配好了。**
+
+**装完不领密钥，AI 会提示「你还没有配置密钥」—— 这正常，去领就行。**
+
+---
+
 ## 一、这是什么
 
 13 个技能，每个是一个 `SKILL.md` 文件。AI 助手读了它就知道：
@@ -13,7 +29,7 @@
 - 用的时候要调什么接口
 - 结果怎么给用户
 
-**技能本身不花钱，但调用接口要密钥。**
+**技能文件是免费的，用的时候需要一把密钥（可以找刘广标领体验的）。**
 
 ---
 
@@ -22,7 +38,7 @@
 ### 方式一：下载压缩包（推荐）
 
 ```
-https://github.com/fangzhinao/jineng/releases/latest/download/fangzhinao-skills.zip
+https://www.fangzhinao.com/skills
 ```
 
 下载后解压，把「技能文档」文件夹放进你的 AI 助手的技能目录。
@@ -30,7 +46,7 @@ https://github.com/fangzhinao/jineng/releases/latest/download/fangzhinao-skills.
 **或者在 AI 助手里直接说：**
 ```
 下载并安装这个技能包：
-https://github.com/fangzhinao/jineng/releases/latest/download/fangzhinao-skills.zip
+https://www.fangzhinao.com/skills
 ```
 
 ### 方式二：只装某个技能
@@ -39,15 +55,7 @@ https://github.com/fangzhinao/jineng/releases/latest/download/fangzhinao-skills.
 
 ---
 
-## 三、怎么拿密钥
-
-**在抖音搜「地产人刘广标」，私信说需要领取体验技能密钥就行。**
-
-拿到后是一串 `fg_` 开头的字符，发给 AI 助手，它会帮你配好。
-
----
-
-## 四、技能清单
+## 三、技能清单
 
 | # | 技能 | 干什么 |
 |---|---|---|
@@ -65,11 +73,9 @@ https://github.com/fangzhinao/jineng/releases/latest/download/fangzhinao-skills.
 | 12 | 深度解读视频 | 长文案自动生成解读视频 |
 | 14 | 抖音自动发布 | 自动发视频到抖音（本地运行） |
 
-**（13 号是内部安装教程，不公开）**
-
 ---
 
-## 五、技能 06 和 14 要额外说明
+## 四、技能 06 和 14 要额外说明
 
 **06-本地数据库** 要用 SQLite 浏览器查看数据，安装包不放在这里（太大），
 技能文档里写了 OSS 下载链接，点进去下就行。
@@ -81,23 +87,20 @@ https://github.com/fangzhinao/jineng/releases/latest/download/fangzhinao-skills.
 
 ---
 
-## 六、更新
+## 五、更新
 
-**链接永远是这个，不会变：**
+**下载链接永远是这个，不会变：**
 ```
-https://github.com/fangzhinao/jineng/releases/latest/download/fangzhinao-skills.zip
+https://www.fangzhinao.com/skills
 ```
 
-我更新后，你重新下载解压覆盖就是最新版。
+**有新版本时，重新打开这个链接下载，解压覆盖原来的文件夹就行。**
 
-**或者跟 AI 助手说：**
-```
-更新一下房智脑技能包
-```
+**覆盖完跟 AI 助手说一句「重新读一下技能」，它就会用新版。**
 
 ---
 
-## 七、遇到问题
+## 六、遇到问题
 
 - 接口报 401 → 密钥没配好，问一下刘广标
 - 接口报 403 → 密钥没权限用这个技能，找刘广标开通
@@ -106,4 +109,4 @@ https://github.com/fangzhinao/jineng/releases/latest/download/fangzhinao-skills.
 
 ---
 
-**出品：@地产人刘广标（抖音 13.3 万粉，郴州房产中介）**
+**出品：抖音 @地产人刘广标（13.3 万粉）**
