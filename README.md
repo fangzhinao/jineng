@@ -22,7 +22,7 @@
 ### 方式一：下载压缩包（推荐）
 
 ```
-https://github.com/892837140-dotcom/fangzhinao/releases/latest/download/fanggua-skills.zip
+https://github.com/fangzhinao/jineng/releases/latest/download/fangzhinao-skills.zip
 ```
 
 下载后解压，把「技能文档」文件夹放进你的 AI 助手的技能目录。
@@ -30,7 +30,7 @@ https://github.com/892837140-dotcom/fangzhinao/releases/latest/download/fanggua-
 **或者在 AI 助手里直接说：**
 ```
 下载并安装这个技能包：
-https://github.com/892837140-dotcom/fangzhinao/releases/latest/download/fanggua-skills.zip
+https://github.com/fangzhinao/jineng/releases/latest/download/fangzhinao-skills.zip
 ```
 
 ### 方式二：只装某个技能
@@ -85,7 +85,7 @@ https://github.com/892837140-dotcom/fangzhinao/releases/latest/download/fanggua-
 
 **链接永远是这个，不会变：**
 ```
-https://github.com/892837140-dotcom/fangzhinao/releases/latest/download/fanggua-skills.zip
+https://github.com/fangzhinao/jineng/releases/latest/download/fangzhinao-skills.zip
 ```
 
 我更新后，你重新下载解压覆盖就是最新版。
