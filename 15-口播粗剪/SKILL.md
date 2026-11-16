@@ -197,6 +197,11 @@ https://www.fangzhinao.com/v1/koubo/
 
 ```
 「只剪气口」  或  「AI 剪辑」
+
+接口的 mode 参数可以传这些（都能识别）：
+  只剪气口 → silence / gap / 气口 / 剪气口 / 静音
+  AI 剪辑 → ai / AI / 智能 / AI剪辑
+  不传或传错 → 默认 ai
 ```
 
 ### 第三步：等结果
@@ -208,6 +213,67 @@ https://www.fangzhinao.com/v1/koubo/
 ```
 
 **处理完给你一个 OSS 链接，7 天有效，记得下载到本地。**
+
+---
+
+## 第三步：查进度（必须轮询）
+
+**提交后返回 `job_id`，然后每 10-20 秒查一次：**
+
+```python
+import urllib.request, json, time
+
+def query(job_id, key):
+    req = urllib.request.Request(
+        "https://www.fangzhinao.com/v1/koubo/job/" + job_id,
+        headers={"x-api-key": key})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read().decode())
+
+# 轮询
+for i in range(60):
+    d = query(job_id, KEY)
+    st = d.get("status")
+    print("%s%%  %s" % (d.get("progress", 0), d.get("step", "")))
+    if st == "done":
+        print("成片:", d["result"]["video_url"])
+        break
+    if st == "failed":
+        print("失败:", d.get("error"))
+        break
+    time.sleep(15)
+```
+
+**返回结构：**
+
+```json
+{
+  "job_id": "11161827_4c0a9e",
+  "status": "queued | running | done | failed",
+  "step": "下载视频 → 剪气口 → 转写中 → AI 判断 → 剪辑中 → 上传成片 → 完成",
+  "progress": 0-100,
+  "mode": "silence | ai",
+  "result": {
+    "original_duration": 604.2,
+    "silence_cut_duration": 583.4,
+    "final_duration": 581.9,
+    "compression": "4%",
+    "anchor_count": 0,
+    "deleted_units": 2,
+    "silence_threshold_db": -28,
+    "source_bitrate_mbps": 15.0,
+    "video_url": "https://...（7天有效）"
+  },
+  "error": "失败时的原因"
+}
+```
+
+**处理时间参考：**
+```
+3-5 分钟视频    1-2 分钟
+10 分钟视频     3-4 分钟
+20 分钟视频     6-8 分钟
+```
 
 ---
 
@@ -321,11 +387,11 @@ A：说明你的素材本来就干净。剪气口只删真正的停顿，不会�
 ## 技术说明（给想了解的人）
 
 ```
-模式一流程：
-  剪气口（auto-editor 静音检测，自动选阈值）
+模式一流程（不转写、不调 AI，最快）：
+  剪气口（silencedetect 找静音 + ffmpeg 精确切割，自动选阈值）
 
 模式二流程：
-① 剪气口（auto-editor 静音检测）
+① 剪气口（silencedetect + ffmpeg 精确切割）
 ② 在剪完气口的视频上转写（faster-whisper，词级时间戳）
 ③ 找「重拍」等锚点词
 ④ 合并连续锚点 → 重拍事件
