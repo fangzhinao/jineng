@@ -8,6 +8,49 @@ description: 口播视频快速粗剪——剪掉停顿空白、删掉你说"重
 > **⚠️ 用之前必须配密钥。** 这个技能用「房智脑」的粗剪服务，需要密钥。
 > 私信抖音「地产人刘广标」领取体验密钥。
 
+## 前置：配置密钥（只需一次）
+
+**如果 `~/.fangguagua/config.json` 不存在**，说明用户还没配置密钥。执行：
+
+```
+告诉用户：
+「你还没有配置密钥。
+
+在抖音搜「地产人刘广标」，私信说需要领取体验技能密钥就行。
+
+拿到后是一串 fg_ 开头的内容，发给我，我帮你配好。」
+```
+
+**用户发来密钥后，执行这段：**
+
+```python
+import json, pathlib
+p = pathlib.Path.home() / ".fangguagua"
+p.mkdir(parents=True, exist_ok=True)
+(p / "config.json").write_text(json.dumps({"key": "把用户给的密钥填这里"}), encoding="utf-8")
+print("✅ 密钥已配置")
+```
+
+**密钥 `fg_` 开头，40 位左右。不要在本文件里写任何真实密钥。**
+
+---
+
+## 第一步：读密钥（每次调用前都要）
+
+```python
+import json, pathlib, sys
+CFG = pathlib.Path.home() / ".fangguagua" / "config.json"
+if not CFG.exists():
+    print("❌ 未配置密钥，请先把密钥发给我")
+    raise SystemExit
+KEY = json.loads(CFG.read_text(encoding="utf-8"))["key"]
+GW = "https://www.fangzhinao.com/v1/koubo"
+```
+
+**所有接口调用都要带 `x-api-key: KEY` 这个请求头。**
+
+---
+
 ## 🔴 先说清楚：这是粗剪，不是精剪
 
 **这个技能只做两件事：删停顿、删废镜头。做完之后你还要自己精剪。**
@@ -105,8 +148,8 @@ description: 口播视频快速粗剪——剪掉停顿空白、删掉你说"重
 **方式A：用户给了链接**（最简单）
 
 ```
-POST http://101.200.15.155:7012/job
-Header: X-Token: <密钥>
+POST https://www.fangzhinao.com/v1/koubo/job
+Header: x-api-key: KEY（从 config.json 读）
 Body:   {"video_url": "https://任意公网链接.mp4", "mode": "ai"}
 
 ✅ 支持任何公网能访问的 URL：OSS、豆包/CDN、微信、B站、网盘直链
@@ -116,7 +159,7 @@ Body:   {"video_url": "https://任意公网链接.mp4", "mode": "ai"}
 **方式B：视频在本地，智能体能读文件**（推荐）
 
 ```
-curl -X POST http://101.200.15.155:7012/upload \
+curl -X POST https://www.fangzhinao.com/v1/koubo/upload \
      -F "file=@D:\视频\口播1.mp4" \
      -F "mode=ai"
 
@@ -128,7 +171,7 @@ curl -X POST http://101.200.15.155:7012/upload \
 **方式C：智能体什么都干不了 → 让用户打开网页**
 
 ```
-http://101.200.15.155:7012/
+https://www.fangzhinao.com/v1/koubo/
 拖拽视频 → 选模式 → 点开始
 ```
 
@@ -145,9 +188,9 @@ http://101.200.15.155:7012/
 ### 服务地址
 
 ```
-外网：http://101.200.15.155:7012
-内网：http://192.168.2.102:9886   （公司内部用，快 46 倍）
-密钥：X-Token 请求头（私信抖音「地产人刘广标」领取）
+外网：https://www.fangzhinao.com/v1/koubo
+内网：（内部测试可用 http://192.168.2.102:9886，快 46 倍）
+密钥：x-api-key 请求头，跟其他技能同一个 fg_ 密钥（私信抖音「地产人刘广标」领取）
 ```
 
 ### 第二步：告我要哪个模式
@@ -237,7 +280,7 @@ http://101.200.15.155:7012/
 
 | 状态码 / 错误 | 跟用户说 |
 |---|---|
-| `401 缺少或错误的 X-Token` | 「密钥不对或没配，私信抖音『地产人刘广标』领取体验密钥」 |
+| `401 缺少或格式错误的密钥` | 「密钥不对或没配，私信抖音『地产人刘广标』领取体验密钥」 |
 | `400 不允许的 OSS 路径` | 「这个文件路径不支持，把视频传到 koubo/ 目录下再试」 |
 | `404 任务不存在` | 「任务号错了，或者服务重启过，重新提交一次」 |
 | `status: failed` | 「剪辑失败了，把原片和这个报错发给抖音『地产人刘广标』看一下」 |
