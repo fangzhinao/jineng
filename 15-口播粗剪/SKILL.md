@@ -158,15 +158,58 @@ Body:   {"video_url": "https://任意公网链接.mp4", "mode": "ai"}
 
 **方式B：视频在本地，智能体能读文件**（推荐）
 
+**⚠️ 大文件（>10MB）必须分两步走，比直接上传快 40 倍。**
+
+```python
+import json, urllib.request
+
+# ── 第一步：要一个 OSS 直传地址 ──
+def presign(key, filename):
+    req = urllib.request.Request(
+        "https://www.fangzhinao.com/v1/koubo/presign",
+        data=json.dumps({"filename": filename}).encode(),
+        headers={"x-api-key": key, "Content-Type": "application/json"},
+        method="POST")
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read())
+
+d = presign(KEY, "口播.mp4")
+# → {"upload_url": "https://bksjk.oss...", "oss_key": "koubo/in/20261116/xxx.mp4"}
+
+# ── 第二步：PUT 到 OSS（直接传，不过网关）──
+with open(r"D:\视频\口播1.mp4", "rb") as f:
+    data = f.read()
+req = urllib.request.Request(d["upload_url"], data=data, method="PUT",
+                             headers={"Content-Type": "video/mp4"})
+urllib.request.urlopen(req, timeout=1800)
+
+# ── 第三步：提交 oss_key 开始处理 ──
+# POST /v1/koubo/job  {"oss_key": d["oss_key"], "mode": "ai"}
+```
+
+**为什么必须分两步：**
+
+```
+走网关（POST /upload）
+  用户 → 阿里云网关 → 102
+  网关机器出口带宽只有 1-5 Mbps  ← 卡在这
+  实测 14 MB 要 82 秒
+
+预签名直传
+  用户 → 阿里云 OSS → 102 下载
+  实测 14 MB 只要 2 秒
+```
+
+**小文件（<10MB）可以一步传，只用于测试：**
+
 ```
 curl -X POST https://www.fangzhinao.com/v1/koubo/upload \
-     -F "file=@D:\视频\口播1.mp4" \
+     -H "x-api-key: $KEY" \
+     -F "file=@D:\视频\短片段.mp4" \
      -F "mode=ai"
-
-返回：{"ok":true, "job_id":"11161759_bac765", "size_mb":14.8}
 ```
 
-**这种方式不用 OSS，直接传文件，最简单的用法。**
+---
 
 **方式C：智能体什么都干不了 → 让用户打开网页**
 
@@ -349,10 +392,92 @@ for i in range(60):
 | `401 缺少或格式错误的密钥` | 「密钥不对或没配，私信抖音『地产人刘广标』领取体验密钥」 |
 | `400 不允许的 OSS 路径` | 「这个文件路径不支持，把视频传到 koubo/ 目录下再试」 |
 | `404 任务不存在` | 「任务号错了，或者服务重启过，重新提交一次」 |
+| `上传不完整：应该 X 字节，实际收到 Y 字节` | 「网络中断了，重传一次」 |
+| `下载到的不是视频文件` | 「链接过期了或者需要登录，重新生成链接再发我」 |
+| `视频文件读不出时长，文件可能损坏` | 「文件传坏了，重新发一次」 |
 | `status: failed` | 「剪辑失败了，把原片和这个报错发给抖音『地产人刘广标』看一下」 |
 | 请求超时 / 502 | 「服务暂时忙，等两分钟再试一次」 |
 
 **任何情况下都不要自己编造报错原因。**
+
+---
+
+## 完整代码示例（智能体可直接抄）
+
+**这是最稳的一条路径，全程不需要用户操作：**
+
+```python
+import json, time, urllib.request, pathlib
+
+GW = "https://www.fangzhinao.com/v1/koubo"
+
+# ── 0. 读密钥 ──
+CFG = pathlib.Path.home() / ".fangguagua" / "config.json"
+KEY = json.loads(CFG.read_text(encoding="utf-8"))["key"]
+
+def api(path, data=None, method="POST"):
+    req = urllib.request.Request(
+        GW + path,
+        data=json.dumps(data).encode() if data else None,
+        headers={"x-api-key": KEY, "Content-Type": "application/json"},
+        method=method)
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.loads(r.read())
+
+def cut_video(local_path, mode="ai", timeout_min=15):
+    """完整流程：直传 → 提交 → 轮询 → 返回成片链接"""
+    p = pathlib.Path(local_path)
+    mb = p.stat().st_size / 1024 / 1024
+    print("文件 %.1f MB" % mb)
+
+    # ── 1. 要直传地址 ──
+    d = api("/presign", {"filename": p.name})
+    print("拿到上传地址")
+
+    # ── 2. PUT 到 OSS（大文件别一次读进内存，分块）──
+    import http.client, urllib.parse
+    u = urllib.parse.urlparse(d["upload_url"])
+    conn = http.client.HTTPSConnection(u.netloc, timeout=1800)
+    path = u.path + ("?" + u.query if u.query else "")
+    conn.putrequest("PUT", path)
+    conn.putheader("Content-Length", str(p.stat().st_size))
+    conn.putheader("Content-Type", "video/mp4")
+    conn.endheaders()
+    with open(p, "rb") as f:
+        while True:
+            chunk = f.read(4 * 1024 * 1024)
+            if not chunk: break
+            conn.send(chunk)
+    resp = conn.getresponse()
+    assert resp.status in (200, 201), "上传失败 HTTP %d" % resp.status
+    print("上传完成")
+
+    # ── 3. 提交任务 ──
+    j = api("/job", {"oss_key": d["oss_key"], "mode": mode})
+    jid = j["job_id"]
+    print("任务号 %s，处理中…" % jid)
+
+    # ── 4. 轮询 ──
+    deadline = time.time() + timeout_min * 60
+    while time.time() < deadline:
+        time.sleep(15)
+        s = api("/job/" + jid, method="GET")
+        print("  %s%%  %s" % (s.get("progress", 0), s.get("step", "")))
+        if s["status"] == "done":
+            r = s["result"]
+            print("完成：%.1f → %.1f 秒（%s）" % (
+                r["original_duration"], r["final_duration"], r["compression"]))
+            if r.get("anchor_count"):
+                print("找到 %d 处重拍，删掉 %d 句" % (r["anchor_count"], r["deleted_units"]))
+            return r["video_url"]
+        if s["status"] == "failed":
+            raise RuntimeError("处理失败：" + str(s.get("error")))
+    raise TimeoutError("超过 %d 分钟没完成" % timeout_min)
+
+# 用法
+url = cut_video("D:/视频/口播1.mp4", mode="ai")
+print("成片：", url)
+```
 
 ---
 
@@ -372,6 +497,18 @@ A：不掉，保持原码率（约 9 Mbps）。
 
 **Q：能加字幕吗？**
 A：这个技能不做字幕。剪完拿剪映加，或者用「08-知识库」生成文案。
+
+**Q：上传要多久？**
+
+```
+直传 OSS（/presign）：7-8 MB/s
+  100 MB 约 15 秒
+  300 MB 约 45 秒
+
+走网关（/upload）：1 MB/s
+  100 MB 约 100 秒
+  300 MB 约 5 分钟   ← 慢 40 倍，大文件别用
+```
 
 **Q：视频很大传不上去？**
 A：先用剪映或手机相册压一下（1080p 就够），压到 200 MB 以内最快。
